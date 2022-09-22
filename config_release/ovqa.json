@@ -1,0 +1,57 @@
+{
+    "train_datasets": [
+      {
+        "name": "ovqa",
+        "txt": {
+          "ovqa_qa": "data/ovqa_annos/ovqa_train_7k.jsonl"
+        },
+        "img": "/temp/..."  #TODO
+      }
+    ],
+    "val_datasets": [
+      {
+        "name": "ovqa_qa",
+        "txt": {
+          "ovqa_qa": "data/ovqa_annos/ovqa_val.jsonl"
+        },
+        "img": "/temp/..." #TODO
+      }
+    ],
+    "ans2label_path": "data/ovqa_annos/train_ans2label.json",
+    
+    "max_txt_len": 40,
+    "crop_img_size": 224,
+    "resize_size": 256,
+    "img_pixel_mean": [0.48145466, 0.4578275, 0.40821073], 
+    "img_pixel_std": [0.26862954, 0.26130258, 0.27577711],
+    "img_input_format": "RGB",
+    "train_n_clips": 1,
+    "model_config": "config_release/base_model.json",
+    "tokenizer_dir": "ext/bert-base-uncased/",
+    "visual_model_cfg": "config_release/timesformer_divst_8x32_224_k600_gc.json",
+    "e2e_weights_path": "output/pretrain/alpro_pretrained_ckpt.pt",
+    
+    "num_frm": 8, #TODO
+    "train_batch_size": 3, #TODO
+    "val_batch_size": 3, #TODO
+    "gradient_accumulation_steps": 8, #TODO
+
+    "num_train_epochs": 10, #TODO
+    "min_valid_steps": 50,
+    "num_valid": 50, #TODO
+    "learning_rate": 5e-5, #TODO
+    "weight_decay": 1e-3, #TODO
+    "decay": "linear",
+    "optim": "adamw",
+    "betas": [0.9, 0.98],
+    "dropout": 0.1,
+    "grad_norm": 5.0,
+    "cnn_lr_decay": "linear",
+    "seed":42,
+    "fp16": 0,
+    "classifier": "mlp",
+    "cls_hidden_scale": 2,
+    "task": "ovqa",
+    "num_workers": 4
+  }
+  
