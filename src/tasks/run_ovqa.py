@@ -32,19 +32,54 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import BertConfig, BertTokenizerFast
 
+# setup_mcq
+from data.MCQ.model.model_clip import build_model
+
+# TOTEST
+def setup_mcq_model(mcq_model_path, n_gpu=1):
+    ##@ debug
+    model_clip = torch.load(mcq_model_path, map_location="cuda:0")
+    ##@ model_clip = torch.load(mcq_model_path, map_location="cpu")
+    
+    state_dict = model_clip['state_dict']
+    for param in state_dict:
+            print(param)
+    print(mcq_model_path)
+    model = build_model(state_dict)
+
+    # if multiple gpu...possibly not
+    #if n_gpu > 1:
+    #       model = torch.nn.DataParallel(model)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+    model.eval()
+
+    return model
+
+
 
 def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
-                          is_train=True, return_label=True):
+                          is_train=True, return_label=True, ret_model= None):
     """
     Returns:
         list(dict), each dict is
-            msrvtt_qa: {
+            @ovqa / msrvtt_qa: {
                 "answer": "couch",
                 "question": "what are three people sitting on?",
                 "video_id": "video6513",
                 "answer_type": "what"
                 }
     """
+    ##@ denote if it is baseline
+    if ret_model is None:
+        # FurtherTODO in baseline setting
+        LOGGER.info(f"Test Baseline Condition")
+        LOGGER.info(f"Not implemented")
+        exit(-1)
+    else:
+        LOGGER.info(f"Test Online VideoQA")
+
     raw_datalist = load_jsonl(anno_path)
     LOGGER.info(f"Loaded data size {len(raw_datalist)}")
     if cfg.data_ratio != 1.0:
@@ -109,7 +144,11 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
         return_label=return_label,
         is_train=is_train,
         img_db_type='rawvideo',
-        video_fmt=video_fmt
+        video_fmt=video_fmt,
+        ##@ add retrieval model
+        ret_model=ret_model,
+        c_level = cfg.c_level,
+        f_level = cfg.f_level
     )
     LOGGER.info(f"is_train {is_train}, dataset size {len(dataset)} groups, "
                 f"each group {cfg.max_n_example_per_group if is_train else 1}")
@@ -134,20 +173,33 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
 
 
 def setup_dataloaders(cfg, tokenizer):
+    ##@ init mcq and pass it to 
+    LOGGER.info("Init. MCQ retrieval model in data_loader...")
+    mcq_model = setup_mcq_model(cfg.mcq_model_path, 1) # running on colab on support 1 gpu, could be changed in release
+
+
     LOGGER.info("Init. train_loader and val_loader...")
+    ##@ add mcq_model to parameter 
     train_loader = mk_qa_dataloader(
         task_type=cfg.task,
         anno_path=cfg.train_datasets[0].txt[cfg.task],
         lmdb_dir=cfg.train_datasets[0].img,
-        cfg=cfg, tokenizer=tokenizer, is_train=True
+        cfg=cfg, tokenizer=tokenizer, is_train=True,
+        ##@ add retrieval model
+        ret_model=mcq_model
     )
     val_loader = mk_qa_dataloader(
         task_type=cfg.task,
         anno_path=cfg.val_datasets[0].txt[cfg.task],
         lmdb_dir=cfg.val_datasets[0].img,
-        cfg=cfg, tokenizer=tokenizer, is_train=False, return_label=False
+        cfg=cfg, tokenizer=tokenizer, is_train=False, return_label=False,
+        ##@ add retrieval model
+        ret_model=mcq_model
     )
     img_norm = ImageNorm(mean=cfg.img_pixel_mean, std=cfg.img_pixel_std)
+
+    # PrefetchLoader needs to be re-designed (possible delete norm)
+    # TOTEST
     train_loader = PrefetchLoader(train_loader, img_norm)
     val_loader = PrefetchLoader(val_loader, img_norm)
     return train_loader, val_loader
@@ -185,6 +237,8 @@ def setup_model(cfg, device=None):
     if cfg.e2e_weights_path:
         LOGGER.info(f"Loading e2e weights from {cfg.e2e_weights_path}")
         num_patches = (cfg.crop_img_size // video_enc_cfg['patch_size']) ** 2
+
+        ##@ here temporal embedding with resize while forwarding will be excuted according to the timesformer code, No need care about resize here
         # NOTE strict is False if loaded from ALBEF ckpt
         load_state_dict_with_pos_embed_resizing(model, 
                                                 cfg.e2e_weights_path, 
@@ -221,6 +275,7 @@ def forward_step(model, batch, cfg):
     return outputs
 
 
+# TOTEST
 @torch.no_grad()
 def validate(model, val_loader, cfg, train_global_step, eval_score=True):
     """use eval_score=False when doing inference on test sets where answers are not available"""
@@ -232,6 +287,7 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
     st = time.time()
     debug_step = 5
     pbar = tqdm(total=len(val_loader))
+    ##@ todebug
     for val_step, batch in enumerate(val_loader):
         # forward pass
         question_ids = batch["question_ids"]
@@ -250,14 +306,19 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
         # could be 1, where only a single clip is evaluated
         num_clips = cfg.inference_n_clips
         num_frm = cfg.num_frm
+
+        ##@ no need for processing here
+        ##@ Original Code
         # (B, T=num_clips*num_frm, C, H, W) --> (B, num_clips, num_frm, C, H, W)
-        new_visual_shape = (bsz, num_clips, num_frm) + batch["visual_inputs"].shape[2:]
-        visual_inputs = batch["visual_inputs"].view(*new_visual_shape)
+        #new_visual_shape = (bsz, num_clips, num_frm) + batch["visual_inputs"].shape[2:]
+        #visual_inputs = batch["visual_inputs"].view(*new_visual_shape)
+
         logits = []
         losses = []
+        ##@ no need for processing here, num_clips = 1
         for clip_idx in range(num_clips):
             # (B, num_frm, C, H, W)
-            mini_batch["visual_inputs"] = visual_inputs[:, clip_idx]
+            mini_batch["visual_inputs"] = batch["visual_inputs"] # (B, ) actually
             mini_batch["n_examples_list"] = batch["n_examples_list"]
             outputs = forward_step(model, mini_batch, cfg)
             logits.append(outputs["logits"].cpu())
@@ -266,9 +327,9 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
             losses.append(_loss)
         loss += (sum(losses) / num_clips)
 
-        logits = torch.stack(logits)  # (num_frm, B, 5)
+        logits = torch.stack(logits)  # (num_frm, B, 5) actucally is (1, B, num_labels)
         if pool_method == "mean":
-            logits = logits.mean(0)  # (B, 5)
+            logits = logits.mean(0)  # (B, 5) actucally is (1, B, num_labels)
         elif pool_method == "max":
             logits = logits.max(0)[0]  # (B, 5)
         elif pool_method == "lse":
@@ -277,8 +338,8 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
         else:
             raise ValueError(f"Invalid value for pool_method, "
                              f"got {pool_method}, expect one of [`mean`, `max`, `lse`]")
-
-        if cfg.task in ["action", "transition", "frameqa", "msrvtt_qa", "msvd_qa"]:
+        ##@ add ovqa config
+        if cfg.task in ["action", "transition", "frameqa", "msrvtt_qa", "msvd_qa", "ovqa"]:
             # cross entropy
             pred_labels = logits.max(dim=-1)[1].data.tolist()
         else:
@@ -349,7 +410,8 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
                     _num = gathered_ratios[
                         scores_k.replace("acc", "ratio")][1]
                     gathered_v = gathered_v * 1. / _num if _num != 0 else 0
-            if cfg.task in ["action", "transition", "frameqa", "msrvtt_qa", "msvd_qa"]:
+            ##@ add ovqa config
+            if cfg.task in ["action", "transition", "frameqa", "msrvtt_qa", "msvd_qa", "ovqa"]:
                 gathered_scores[scores_k] = get_rounded_percentage(
                     gathered_v)
             else:
@@ -471,13 +533,19 @@ def start_training(cfg):
         # could be 1, where only a single clip is used
         num_clips = cfg.train_n_clips
         num_frm = cfg.num_frm
+
+        ##@ no need for processing here
+        ##@ Original Code
         # (B, T=num_clips*num_frm, C, H, W) --> (B, num_clips, num_frm, C, H, W)
-        new_visual_shape = (bsz, num_clips, num_frm) + batch["visual_inputs"].shape[2:]
-        visual_inputs = batch["visual_inputs"].view(*new_visual_shape)
+        #new_visual_shape = (bsz, num_clips, num_frm) + batch["visual_inputs"].shape[2:]
+        #visual_inputs = batch["visual_inputs"].view(*new_visual_shape)
+
         logits = []
+
+        ##@ no need for processing here for train_n_clips is 1 for qa tasks
         for clip_idx in range(num_clips):
             # (B, num_frm, C, H, W)
-            mini_batch["visual_inputs"] = visual_inputs[:, clip_idx]
+            mini_batch["visual_inputs"] = batch["visual_inputs"]
             mini_batch["n_examples_list"] = batch["n_examples_list"]
             # outputs = forward_step(model, mini_batch, cfg)
             outputs = forward_step(model, mini_batch, cfg)
@@ -545,8 +613,8 @@ def start_training(cfg):
             restorer.step()
             pbar.update(1)
 
-            # checkpoint
-            if global_step % cfg.valid_steps == 0:
+            # checkpoint                             ##@ debug
+            if global_step % cfg.valid_steps == 0 or global_step == 88:
                 LOGGER.info(f'Step {global_step}: start validation')
                 validate(
                     model, val_loader, cfg, global_step)
@@ -563,7 +631,7 @@ def start_training(cfg):
             model, val_loader, cfg, global_step)
         model_saver.save(step=global_step, model=model)
 
-
+# TOTEST
 def start_inference(cfg):
     set_random_seed(cfg.seed)
     n_gpu = hvd.size()
@@ -611,13 +679,20 @@ def start_inference(cfg):
     # prepare data
     tokenizer = BertTokenizerFast.from_pretrained(cfg.tokenizer_dir)
     cfg.data_ratio = 1.
+
+    ##@ init mcq and pass it to 
+    LOGGER.info("Init. MCQ retrieval model in data_loader...")
+    mcq_model = setup_mcq_model(cfg.mcq_model_path, n_gpu) # running on colab on support 1 gpu, could be changed in release
+    
     val_loader = mk_qa_dataloader(
         task_type=cfg.task,
         anno_path=cfg.inference_txt_db,
         lmdb_dir=cfg.inference_img_db,
         cfg=cfg, tokenizer=tokenizer,
         is_train=False,
-        return_label=False
+        return_label=False,
+        ##@ add ret_model
+        ret_model=mcq_model
     )
     img_norm = ImageNorm(mean=cfg.img_pixel_mean, std=cfg.img_pixel_std)
     val_loader = PrefetchLoader(val_loader, img_norm)
@@ -674,6 +749,8 @@ def start_inference(cfg):
 
 
 if __name__ == '__main__':
+    ##@ If using CUDA TENSOR in dataloader -> UNCOMMENT This line
+    torch.multiprocessing.set_start_method('spawn')
     # Initialize Horovod
     hvd.init()
     input_cfg = shared_configs.get_video_qa_args()

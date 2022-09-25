@@ -479,7 +479,10 @@ class TimeSformer(nn.Module):
 
         ## apply pooling
         W = H = self.img_size // self.patch_size
-        T = self.num_frames
+
+        ##@ T is variable according to x
+        #T = self.num_frames
+        T = t
 
         cls_tokens = x[:, 0, :].unsqueeze(1)
         other_tokens = x[:, 1:, :]

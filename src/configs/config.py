@@ -308,8 +308,10 @@ class SharedConfigs(object):
     def get_video_qa_args(self):
         self.parser.add_argument(
             "--task", type=str,
-            choices=["action", "transition", "frameqa", "msrvtt_qa"],
-            help="TGIF-QA tasks and MSRVTT-QA")
+            ##@ adding ovqa config option
+            choices=["action", "transition", "frameqa", "msrvtt_qa", "ovqa"],
+            help="TGIF-QA tasks and MSRVTT-QA and OVQA")
+
         self.parser.add_argument("--loss_type", type=str, default="ce",
                                  help="loss type, will be overwritten later")
         self.parser.add_argument("--classifier", type=str, default="mlp",
@@ -334,8 +336,9 @@ class SharedConfigs(object):
         else:
             num_answers = 0
 
-        if args.task in ["msrvtt_qa", "msvd_qa"]:
-            args.num_labels = max(num_answers, 1500)
+        ##@ adding ovqa config option
+        if args.task in ["msrvtt_qa", "msvd_qa", "ovqa"]:
+            args.num_labels = num_answers #max(num_answers, 1500)
             args.loss_type = "ce"
         else:
             raise NotImplementedError

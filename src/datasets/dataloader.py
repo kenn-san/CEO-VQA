@@ -101,7 +101,13 @@ class PrefetchLoader(object):
             is_tuple = isinstance(batch, tuple)
             if is_tuple:
                 task, batch = batch
-            batch["visual_inputs"] = batch["visual_inputs"].float()
+
+            ##@ convert to fp32
+            # batch["visual_inputs"] = batch["visual_inputs"].float()
+            batch["visual_inputs"] = [t.float() for t in batch["visual_inputs"]]
+
+            ##@ No further need to nomarlize, I have done in dataloader 
+            """
             if self.img_normalize is not None:
                 batch["visual_inputs"] = self.img_normalize(
                     batch["visual_inputs"])
@@ -113,6 +119,7 @@ class PrefetchLoader(object):
                     batch["context_visual_inputs"] = batch["context_visual_inputs"].float()
                     batch["context_visual_inputs"] = self.img_normalize(
                         batch["context_visual_inputs"])
+            """
             if is_tuple:
                 yield task, batch
             else:
@@ -151,7 +158,7 @@ class PrefetchLoader(object):
         torch.cuda.current_stream().wait_stream(self.stream)
         batch = self.batch
         if batch is not None:
-            record_cuda_stream(batch)
+            record_cuda_stream(batch) ##@? what is it actual use in multiple gpu # TOTEST
         self.preload(it)
         return batch
 

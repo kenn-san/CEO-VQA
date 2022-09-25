@@ -31,6 +31,8 @@ def save_training_meta(args):
     save_json(model_config, save_model_config_path, save_pretty=True)
 
     # save a copy of the codebase. !!!Do not store heavy file in your codebase when using it.
+    ##@ do not save zip for time saving
+    """
     code_dir = dirname(dirname(dirname(os.path.realpath(__file__))))
     code_zip_filename = os.path.join(args.output_dir, "code.zip")
     LOGGER.info(f"Saving code from {code_dir} to {code_zip_filename}...")
@@ -40,6 +42,7 @@ def save_training_meta(args):
                  exclude_dirs=["__pycache__", "output", "data", "ext"],
                  exclude_extensions=[".pyc", ".ipynb", ".swap", ".pt"])
     LOGGER.info(f"Saving code done.")
+    """
 
 
 class ModelSaver(object):

@@ -647,8 +647,8 @@ class AlproForSequenceClassification(AlproBaseModel):
     def forward(self, batch):
         visual_inputs = batch['visual_inputs']
         targets = batch['labels']
-
-        device = visual_inputs.device
+        ##@ visual_inputs is a list
+        device = visual_inputs[0].device
 
         # forward text
         text_input_mask = batch['text_input_mask']
@@ -659,12 +659,23 @@ class AlproForSequenceClassification(AlproBaseModel):
                                         )
         text_embeds = text_output.last_hidden_state
 
-        # forward visual
-        b, t, c, h, w = visual_inputs.shape
-        # timeSformer asks for (b, c, t, h, w) as input.
-        visual_inputs = visual_inputs.transpose(1, 2)
+        ##@ TOTEST # 1 by 1 forward ratio in this part
+        image_embeds = []
+        for i, frames in enumerate(visual_inputs):
+            frames = frames.unsqueeze(0) # (bz=1, t, c, h, w)
+            # timeSformer asks for (b, c, t, h, w) as input.
+            frames = frames.transpose(1, 2)
+            image_embed = self.visual_encoder.forward_features(frames, return_all_tokens=True)
+            
+            ##@ debug
+            #print('ENCODEED SHAPE')
+            #print(image_embed.shape)
+            
+            image_embeds.append(image_embed)
+        # concat encoded results
+        image_embeds = torch.cat(image_embeds, dim=0)
 
-        image_embeds = self.visual_encoder.forward_features(visual_inputs, return_all_tokens=True)
+
         image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(device)
 
         # forward cross-encoder

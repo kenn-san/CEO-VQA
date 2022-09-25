@@ -23,13 +23,17 @@ class AlproVideoQADataset(AlproBaseDataset):
     return_label: bool, whether return label in __getitem__
     random_sample_clips:
     """
-    open_ended_qa_names = ["frameqa", "msrvtt_qa", "msvd_qa"]
+
+    ##@ add ovqa config
+    open_ended_qa_names = ["frameqa", "msrvtt_qa", "msvd_qa", "ovqa"]
 
     def __init__(self, task_type, datalist, tokenizer, img_lmdb_dir,
                  fps=3, num_frm=3, frm_sampling_strategy="rand",
                  max_img_size=1000, max_txt_len=20, ans2label=None,
                  ensemble_n_clips=1, return_label=True, is_train=False, random_sample_clips=True, 
-                 video_fmt='.mp4', img_db_type='lmdb'):
+                 video_fmt='.mp4', img_db_type='lmdb', 
+                 ##@ new init parameters
+                 ret_model=None, c_level=None, f_level=None):
         super(AlproVideoQADataset, self).__init__(
             datalist, tokenizer, img_lmdb_dir, img_db_type=img_db_type,
             fps=fps, num_frm=num_frm,
@@ -52,6 +56,12 @@ class AlproVideoQADataset(AlproBaseDataset):
         else:
             self.randaug = None
 
+        ##@ set ret_model & hyperparameter
+        self.ret_model = ret_model
+        self.c_level = c_level
+        self.f_level = f_level
+
+
     def __len__(self):
         return len(self.datalist)
 
@@ -65,16 +75,42 @@ class AlproVideoQADataset(AlproBaseDataset):
                 raise NotImplementedError('Do not support multiple clips for now.')
             else:
                 video_path = os.path.join(self.img_db_dir, vid_id + self.video_fmt) 
-                vid_frm_array = self._load_video_from_path_decord(video_path, height=self.max_img_size, width=self.max_img_size)
+                ###############################################################################################################
+                # @ This is where the Online Fibonacci algorithm to be implemented
+                ###############################################################################################################
+                # BASELINE
+                # FurtherTODO
+                # vid_frm_array = self._load_video_from_path_decord(video_path, height=self.max_img_size, width=self.max_img_size)
+                
+                # ONLINE
+                # TOTEST
+                #print(video_path)
 
-            # Select a random video if the current video was not able to access.
-            if vid_frm_array is None:
-                LOGGER.info(f"Failed to load examples with video: {vid_id}. "
-                            f"Will randomly sample an example as a replacement.")
-                index = random.randint(0, len(self) - 1)
-                continue
+                frame_indices, vid_frm_array = self.online_fib_matching_frames_decord(video_path = video_path, 
+                                                                       text = examples[0]["question"], # 1 example per video
+                                                                       ret_model = self.ret_model, 
+                                                                       c_level = self.c_level, 
+                                                                       fib_level = self.f_level)
 
+                # Select a random video if the current video was not able to access.
+                if vid_frm_array is None:
+                    LOGGER.info(f"Failed to load examples with video: {vid_id}. "
+                                f"Will randomly sample an example as a replacement.")
+                    index = random.randint(0, len(self) - 1)
+                    continue 
+
+                # list of int, (bz=1, T, C, H, W)
+                vid_frm_array = vid_frm_array.squeeze(0) #(T, C, H, W)
+                vid_frm_array = vid_frm_array.cpu()
+
+                ##@ debug check shape
+                #print(vid_frm_array.shape)
+
+                ##@ debug nomarlization
+                #print(f'Test nomarlization{torch.max(vid_frm_array)}' )
             if self.randaug:
+                # Double check random augment
+                # TOTEST
                 vid_frm_array = self.randaug(vid_frm_array.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
             examples = [self._get_single_example(e) for e in examples]
@@ -98,7 +134,9 @@ class AlproVideoQADataset(AlproBaseDataset):
         if not self.return_label:
             example["label"] = None
         return example
-
+    
+    # The evaluate function needs to be re-designed
+    # TODO
     def evaluate_qa(self, results):
         """
         Args:
@@ -115,10 +153,13 @@ class AlproVideoQADataset(AlproBaseDataset):
         gts = []
         # for frameQA
         answer_types = []
+        ##@ add ovqa config
         answer_type2idx = dict(
             frameqa={"object": 0, "number": 1, "color": 2, "location": 3},
             msrvtt_qa={k: idx for idx, k in enumerate(["what", "who", "how", "where", "when"])},
-            msvd_qa={k: idx for idx, k in enumerate(["what", "who", "how", "where", "when"])}
+            msvd_qa={k: idx for idx, k in enumerate(["what", "who", "how", "where", "when"])},
+            ##@ add ovqa config
+            ovqa={k: idx for idx, k in enumerate(["what", "who", "how", "where", "when"])},
         )
 
         qid2pred_ans = {r["question_id"]: r["answer"] for r in results}
@@ -164,7 +205,14 @@ class VideoQACollator(object):
 
     def collate_batch(self, batch):
         v_collate = default_collate
-        visual_inputs = v_collate([d["vid"] for d in batch])  # (B, T, 3, H, W)
+
+        ##@ This v_collate function needs to be re-considerate for     
+        # Original
+        # visual_inputs = v_collate([d["vid"] for d in batch])  # (B, T, C, H, W)
+        # Changed
+        # visual_inputs T is not same for each example
+        visual_inputs = [d["vid"] for d in batch] # list of size (B, ), element: (T, C, H, W)
+        
         # group data
         text_examples = flat_list_of_lists([d["examples"] for d in batch])
         n_examples_list = [d["n_examples"] for d in batch]  # (B, )
@@ -191,7 +239,7 @@ class VideoQACollator(object):
             if text_examples[0]["label"] is not None else None  # (B, #ans)
         question_ids = [d["question_id"] for d in text_examples]
         return dict(
-            visual_inputs=visual_inputs,  # (B, #frm, H, W, C)
+            visual_inputs=visual_inputs,  # Original: (B, #frm, H, W, C) -> #Current: list of size B, element: (T, C, H, W)
             text_input_ids=text_input_ids,
             text_input_mask=text_input_mask,
             question_ids=question_ids,

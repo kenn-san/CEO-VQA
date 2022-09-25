@@ -14,6 +14,29 @@ from src.utils.load_save import LOGGER
 
 decord.bridge.set_bridge("torch")
 
+##@ import for mcq_model & utils function
+from data.MCQ.model.model_clip import tokenize
+from data.MCQ.model.model import sim_matrix
+from torchvision import transforms
+frame_norm = transforms.Compose([
+        transforms.Normalize([0.48145466, 0.4578275, 0.40821073], [0.26862954, 0.26130258, 0.27577711])
+])
+
+def fib(n):
+    """Return the n-th Fibonacci number."""
+    if n == 1 or n == 2:
+        return n
+    else:
+        return fib(n-1) + fib(n-2)
+
+def sample_previous(i, fib_num):
+    """Return a list reprsenting i-th and its previous in total fib_num frames if avaliable"""
+    front = i - (fib_num-1)
+    if front < 0:
+        return list(range(0, i+1))
+    else:
+        return list(range(front, i+1))
+
 
 class AlproBaseDataset(Dataset):
     """
@@ -180,6 +203,137 @@ class AlproBaseDataset(Dataset):
         raw_sample_frms = raw_sample_frms.permute(0, 3, 1, 2)
 
         return raw_sample_frms
+
+    ##@ add online algorithm to it
+    # TOTEST
+    def online_fib_matching_frames_decord(self, video_path, text, ret_model, c_level, fib_level):
+        """
+        Using fibonacci online matching algorithm to sequentially match most relevent
+        Inputs:
+            - video_path(str): path of the video to be loaded
+
+            - text(str): text used for matching
+
+            - ret_model: tecent's model from
+              (Bridging Video-text Retrieval with Multiple Choice Questions, CVPR 2022)[https://arxiv.org/pdf/2201.04850.pdf]
+
+            - c_level(float): confidential hyper_parameter to decide if the text and the video frame(s) is relevant enough
+              see example below
+            - fib_level(int): fibonacci matching level
+              1 2 3 4 5 6
+              1 2 3 5 8 13
+              example: 
+                for i in range(0, len(frames)):
+                    for j in range(1, fib_level+1):
+                        sim_score <- match (ith, i-1th, i-2th, ...) frames with text    ####in total fib(j) frames 
+                        if sim_score > c_level:
+                            return i and frames[i] as tensor
+                        else:
+                            continue
+            - n_gpu(int): number of gpus used
+        Returns:
+            frame indices as list and their tensors
+        """
+        #try:
+        model = ret_model
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # reading video frames based on fib
+        video_reader = decord.VideoReader(video_path, num_threads=1)
+
+        vlen = len(video_reader)
+        fps = video_reader.get_avg_fps()
+
+        # used for return if c_level filter all frames
+        max_sim_score = 0
+        max_frames = None
+        max_frame_indices = None
+
+        data = dict()
+        data['video'] = None
+        data['text'] = [text]
+
+        # encode text for once
+        with torch.no_grad():
+            if tokenize is not None:
+                data['text'] = tokenize(data['text']).to(device)
+
+            ##@debug
+            #print('text infos')
+            #print( data['text'].shape )
+            #print( data['text'].dtype )
+            #print( data['text'].device )
+
+            text_features = model.encode_text( data['text'] )
+            text_embed = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        # recording individual frame sim scors
+        frame_sims = dict()
+
+        # online matching
+        for i in range(0, vlen, int(fps)):
+            for j in range(1, fib_level+1):
+                # sim_score <- match (ith, i-1th, i-2th, ...) frames with text    
+                # sample (ith, i-1th, i-2th, ...) frames ####in total fib(j) frames
+                frame_indices = sample_previous(i, fib(j))
+                frames = video_reader.get_batch(frame_indices)  # (T, H, W, C), torch.uint8
+                frames = frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+
+                data['video'] = frame_norm( frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+
+                # encode video according to frame
+                with torch.no_grad():
+                    image_features = model.encode_image(data['video'])
+                    vid_embed = image_features / image_features.norm(dim=-1, keepdim=True)
+
+                ##@ debug
+                #print(f'text dtype: {text_embed.dtype}')
+                #print(f'vid dtype {vid_embed.dtype}')
+
+                # video: nomarlized tensor (b, t, c, h, w)
+                # text: tokenized tensor (b, module_dim)
+                sims = sim_matrix(text_embed, vid_embed)
+                sim_score = sims.detach().cpu().numpy()[0,0]
+
+                ##@ debug
+                #print(frame_indices)
+                #print(sims)
+
+                # recored sims score for individual frames
+                if j == 1:
+                    frame_sims[i] = sim_score
+
+                if sim_score > c_level:
+
+                    if j == fib_level and frame_sims[frame_indices[-1]] > c_level:
+                        ##@ debug
+                        #print('fib_level reached found')
+                        #print(frame_indices)
+                        #print(sims)
+                        #print(data['video'].shape)
+                        return frame_indices, data['video']
+
+                    ## TODO KEY ERROR ! frame_indices[0]
+                    elif frame_sims[frame_indices[-1]] <= c_level:
+                        ##@ debug
+                        #print('end condition matched')
+                        #print(frame_indices)
+                        #print(frame_indices[1:])
+                        #print(sims)
+                        #print(data['video'].shape)
+                        return frame_indices[1:], data['video'][:, 1:]
+
+                if sim_score > max_sim_score:
+                    max_sim_score = sim_score
+                    max_frame_indices = frame_indices
+                    max_frames = data['video']
+
+        #print('no higher than c_level')
+        #print(max_frame_indices)
+        #print(max_sim_score)
+        return max_frame_indices, max_frames
+        #except Exception as e:
+            #print('Error in perfroming online algorithm')
+            #return None, None
 
 def img_collate(imgs):
     """
