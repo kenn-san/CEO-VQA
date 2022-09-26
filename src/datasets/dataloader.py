@@ -102,10 +102,12 @@ class PrefetchLoader(object):
             if is_tuple:
                 task, batch = batch
 
+            ##@@ no need!
             ##@ convert to fp32
             # batch["visual_inputs"] = batch["visual_inputs"].float()
-            batch["visual_inputs"] = [t.float() for t in batch["visual_inputs"]]
+            #batch["visual_inputs"] = [t.float() for t in batch["visual_inputs"]]
 
+            ##@@ no need!
             ##@ No further need to nomarlize, I have done in dataloader 
             """
             if self.img_normalize is not None:

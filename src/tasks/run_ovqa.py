@@ -32,35 +32,9 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import BertConfig, BertTokenizerFast
 
-# setup_mcq
-from data.MCQ.model.model_clip import build_model
-
-# TOTEST
-def setup_mcq_model(mcq_model_path, n_gpu=1):
-    ##@ debug
-    model_clip = torch.load(mcq_model_path, map_location="cuda:0")
-    ##@ model_clip = torch.load(mcq_model_path, map_location="cpu")
-    
-    state_dict = model_clip['state_dict']
-    for param in state_dict:
-            print(param)
-    print(mcq_model_path)
-    model = build_model(state_dict)
-
-    # if multiple gpu...possibly not
-    #if n_gpu > 1:
-    #       model = torch.nn.DataParallel(model)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    model.eval()
-
-    return model
-
-
 
 def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
-                          is_train=True, return_label=True, ret_model= None):
+                          is_train=True, return_label=True):
     """
     Returns:
         list(dict), each dict is
@@ -71,15 +45,6 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
                 "answer_type": "what"
                 }
     """
-    ##@ denote if it is baseline
-    if ret_model is None:
-        # FurtherTODO in baseline setting
-        LOGGER.info(f"Test Baseline Condition")
-        LOGGER.info(f"Not implemented")
-        exit(-1)
-    else:
-        LOGGER.info(f"Test Online VideoQA")
-
     raw_datalist = load_jsonl(anno_path)
     LOGGER.info(f"Loaded data size {len(raw_datalist)}")
     if cfg.data_ratio != 1.0:
@@ -144,11 +109,7 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
         return_label=return_label,
         is_train=is_train,
         img_db_type='rawvideo',
-        video_fmt=video_fmt,
-        ##@ add retrieval model
-        ret_model=ret_model,
-        c_level = cfg.c_level,
-        f_level = cfg.f_level
+        video_fmt=video_fmt
     )
     LOGGER.info(f"is_train {is_train}, dataset size {len(dataset)} groups, "
                 f"each group {cfg.max_n_example_per_group if is_train else 1}")
@@ -173,33 +134,24 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
 
 
 def setup_dataloaders(cfg, tokenizer):
-    ##@ init mcq and pass it to 
-    LOGGER.info("Init. MCQ retrieval model in data_loader...")
-    mcq_model = setup_mcq_model(cfg.mcq_model_path, 1) # running on colab on support 1 gpu, could be changed in release
-
-
     LOGGER.info("Init. train_loader and val_loader...")
     ##@ add mcq_model to parameter 
     train_loader = mk_qa_dataloader(
         task_type=cfg.task,
         anno_path=cfg.train_datasets[0].txt[cfg.task],
         lmdb_dir=cfg.train_datasets[0].img,
-        cfg=cfg, tokenizer=tokenizer, is_train=True,
-        ##@ add retrieval model
-        ret_model=mcq_model
+        cfg=cfg, tokenizer=tokenizer, is_train=True
     )
     val_loader = mk_qa_dataloader(
         task_type=cfg.task,
         anno_path=cfg.val_datasets[0].txt[cfg.task],
         lmdb_dir=cfg.val_datasets[0].img,
-        cfg=cfg, tokenizer=tokenizer, is_train=False, return_label=False,
-        ##@ add retrieval model
-        ret_model=mcq_model
+        cfg=cfg, tokenizer=tokenizer, is_train=False, return_label=False
     )
     img_norm = ImageNorm(mean=cfg.img_pixel_mean, std=cfg.img_pixel_std)
 
     # PrefetchLoader needs to be re-designed (possible delete norm)
-    # TOTEST
+    # TODO
     train_loader = PrefetchLoader(train_loader, img_norm)
     val_loader = PrefetchLoader(val_loader, img_norm)
     return train_loader, val_loader
@@ -318,7 +270,7 @@ def validate(model, val_loader, cfg, train_global_step, eval_score=True):
         ##@ no need for processing here, num_clips = 1
         for clip_idx in range(num_clips):
             # (B, num_frm, C, H, W)
-            mini_batch["visual_inputs"] = batch["visual_inputs"] # (B, ) actually
+            mini_batch["visual_inputs"] = batch["visual_inputs"] ##@@ None actually
             mini_batch["n_examples_list"] = batch["n_examples_list"]
             outputs = forward_step(model, mini_batch, cfg)
             logits.append(outputs["logits"].cpu())
@@ -545,7 +497,7 @@ def start_training(cfg):
         ##@ no need for processing here for train_n_clips is 1 for qa tasks
         for clip_idx in range(num_clips):
             # (B, num_frm, C, H, W)
-            mini_batch["visual_inputs"] = batch["visual_inputs"]
+            mini_batch["visual_inputs"] = batch["visual_inputs"] ##@@ None actually
             mini_batch["n_examples_list"] = batch["n_examples_list"]
             # outputs = forward_step(model, mini_batch, cfg)
             outputs = forward_step(model, mini_batch, cfg)
@@ -614,7 +566,7 @@ def start_training(cfg):
             pbar.update(1)
 
             # checkpoint                             ##@ debug
-            if global_step % cfg.valid_steps == 0 or global_step == 88:
+            if global_step % cfg.valid_steps == 0 or global_step == 66:
                 LOGGER.info(f'Step {global_step}: start validation')
                 validate(
                     model, val_loader, cfg, global_step)
@@ -679,10 +631,6 @@ def start_inference(cfg):
     # prepare data
     tokenizer = BertTokenizerFast.from_pretrained(cfg.tokenizer_dir)
     cfg.data_ratio = 1.
-
-    ##@ init mcq and pass it to 
-    LOGGER.info("Init. MCQ retrieval model in data_loader...")
-    mcq_model = setup_mcq_model(cfg.mcq_model_path, n_gpu) # running on colab on support 1 gpu, could be changed in release
     
     val_loader = mk_qa_dataloader(
         task_type=cfg.task,
@@ -690,9 +638,7 @@ def start_inference(cfg):
         lmdb_dir=cfg.inference_img_db,
         cfg=cfg, tokenizer=tokenizer,
         is_train=False,
-        return_label=False,
-        ##@ add ret_model
-        ret_model=mcq_model
+        return_label=False
     )
     img_norm = ImageNorm(mean=cfg.img_pixel_mean, std=cfg.img_pixel_std)
     val_loader = PrefetchLoader(val_loader, img_norm)

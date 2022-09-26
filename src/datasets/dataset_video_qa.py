@@ -31,9 +31,7 @@ class AlproVideoQADataset(AlproBaseDataset):
                  fps=3, num_frm=3, frm_sampling_strategy="rand",
                  max_img_size=1000, max_txt_len=20, ans2label=None,
                  ensemble_n_clips=1, return_label=True, is_train=False, random_sample_clips=True, 
-                 video_fmt='.mp4', img_db_type='lmdb', 
-                 ##@ new init parameters
-                 ret_model=None, c_level=None, f_level=None):
+                 video_fmt='.mp4', img_db_type='lmdb'):
         super(AlproVideoQADataset, self).__init__(
             datalist, tokenizer, img_lmdb_dir, img_db_type=img_db_type,
             fps=fps, num_frm=num_frm,
@@ -56,11 +54,6 @@ class AlproVideoQADataset(AlproBaseDataset):
         else:
             self.randaug = None
 
-        ##@ set ret_model & hyperparameter
-        self.ret_model = ret_model
-        self.c_level = c_level
-        self.f_level = f_level
-
 
     def __len__(self):
         return len(self.datalist)
@@ -75,47 +68,33 @@ class AlproVideoQADataset(AlproBaseDataset):
                 raise NotImplementedError('Do not support multiple clips for now.')
             else:
                 video_path = os.path.join(self.img_db_dir, vid_id + self.video_fmt) 
-                ###############################################################################################################
-                # @ This is where the Online Fibonacci algorithm to be implemented
-                ###############################################################################################################
-                # BASELINE
-                # FurtherTODO
-                # vid_frm_array = self._load_video_from_path_decord(video_path, height=self.max_img_size, width=self.max_img_size)
                 
-                # ONLINE
-                # TOTEST
-                #print(video_path)
 
-                frame_indices, vid_frm_array = self.online_fib_matching_frames_decord(video_path = video_path, 
-                                                                       text = examples[0]["question"], # 1 example per video
-                                                                       ret_model = self.ret_model, 
-                                                                       c_level = self.c_level, 
-                                                                       fib_level = self.f_level)
+                if not os.path.exists(video_path):
+                    LOGGER.info(f"Failed to load examples with video: {vid_id}. "
+                                f"Will randomly sample an example as a replacement.")
+                    index = random.randint(0, len(self) - 1)
+                    continue
 
+                ##@ load video in forward model no need below code here
+                """
                 # Select a random video if the current video was not able to access.
                 if vid_frm_array is None:
                     LOGGER.info(f"Failed to load examples with video: {vid_id}. "
                                 f"Will randomly sample an example as a replacement.")
                     index = random.randint(0, len(self) - 1)
-                    continue 
+                    continue
+                
 
-                # list of int, (bz=1, T, C, H, W)
-                vid_frm_array = vid_frm_array.squeeze(0) #(T, C, H, W)
-                vid_frm_array = vid_frm_array.cpu()
-
-                ##@ debug check shape
-                #print(vid_frm_array.shape)
-
-                ##@ debug nomarlization
-                #print(f'Test nomarlization{torch.max(vid_frm_array)}' )
             if self.randaug:
-                # Double check random augment
-                # TOTEST
                 vid_frm_array = self.randaug(vid_frm_array.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                """
 
             examples = [self._get_single_example(e) for e in examples]
             return dict(
-                vid=vid_frm_array,
+                vid=None,
+                ##@ for load video in forward model
+                video_path = video_path,
                 examples=examples,
                 n_examples=len(examples)  # used to create image feature copies.
             )
@@ -211,8 +190,13 @@ class VideoQACollator(object):
         # visual_inputs = v_collate([d["vid"] for d in batch])  # (B, T, C, H, W)
         # Changed
         # visual_inputs T is not same for each example
-        visual_inputs = [d["vid"] for d in batch] # list of size (B, ), element: (T, C, H, W)
+
+        ##@@ this is not needed
+        # visual_inputs = [d["vid"] for d in batch] # list of size (B, ), element: (T, C, H, W)
         
+        ##@@ pass paths to model
+        video_paths = [d["video_path"] for d in batch]
+
         # group data
         text_examples = flat_list_of_lists([d["examples"] for d in batch])
         n_examples_list = [d["n_examples"] for d in batch]  # (B, )
@@ -239,7 +223,10 @@ class VideoQACollator(object):
             if text_examples[0]["label"] is not None else None  # (B, #ans)
         question_ids = [d["question_id"] for d in text_examples]
         return dict(
-            visual_inputs=visual_inputs,  # Original: (B, #frm, H, W, C) -> #Current: list of size B, element: (T, C, H, W)
+            ##@@ not needed
+            visual_inputs=None,  # Original: (B, #frm, H, W, C) -> #Current: list of size B, element: (T, C, H, W)
+            video_paths = video_paths, # (B, )
+            q_strs = text_str_list, # (B, )
             text_input_ids=text_input_ids,
             text_input_mask=text_input_mask,
             question_ids=question_ids,

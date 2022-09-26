@@ -34,9 +34,9 @@
     "TOTEST BELOW": 1,
 
     "num_frm": 4,
-    "train_batch_size": 3, 
-    "val_batch_size": 3, 
-    "gradient_accumulation_steps": 8, 
+    "train_batch_size": 6, 
+    "val_batch_size": 6, 
+    "gradient_accumulation_steps": 4, 
 
     "num_train_epochs": 10,
     "min_valid_steps": 50,
@@ -54,7 +54,7 @@
     "classifier": "mlp",
     "cls_hidden_scale": 2,
     "task": "ovqa",
-    "num_workers": 0,
+    "num_workers": 8,
 
 
     "mcq_model_path": "data/MCQ_PT/MCQ_CLIP.pth", 
