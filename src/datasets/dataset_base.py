@@ -234,106 +234,107 @@ class AlproBaseDataset(Dataset):
         Returns:
             frame indices as list and their tensors
         """
-        #try:
-        model = ret_model
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # reading video frames based on fib
-        video_reader = decord.VideoReader(video_path, num_threads=1)
+        try:
+            model = ret_model
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            # reading video frames based on fib
+            video_reader = decord.VideoReader(video_path, num_threads=1)
 
-        vlen = len(video_reader)
-        fps = video_reader.get_avg_fps()
+            vlen = len(video_reader)
+            fps = video_reader.get_avg_fps()
 
-        # used for return if c_level filter all frames
-        max_sim_score = 0
-        max_frames = None
-        max_frame_indices = None
+            # used for return if c_level filter all frames
+            max_sim_score = 0
+            max_frames = None
+            max_frame_indices = None
 
-        data = dict()
-        data['video'] = None
-        data['text'] = [text]
+            data = dict()
+            data['video'] = None
+            data['text'] = [text]
 
-        # encode text for once
-        with torch.no_grad():
-            if tokenize is not None:
-                data['text'] = tokenize(data['text']).to(device)
+            # encode text for once
+            with torch.no_grad():
+                if tokenize is not None:
+                    data['text'] = tokenize(data['text']).to(device)
 
-            ##@debug
-            #print('text infos')
-            #print( data['text'].shape )
-            #print( data['text'].dtype )
-            #print( data['text'].device )
+                ##@debug
+                #print('text infos')
+                #print( data['text'].shape )
+                #print( data['text'].dtype )
+                #print( data['text'].device )
 
-            text_features = model.encode_text( data['text'] )
-            text_embed = text_features / text_features.norm(dim=-1, keepdim=True)
+                text_features = model.encode_text( data['text'] )
+                text_embed = text_features / text_features.norm(dim=-1, keepdim=True)
 
-        # recording individual frame sim scors
-        frame_sims = dict()
+            # recording individual frame sim scors
+            frame_sims = dict()
 
-        # online matching
-        for i in range(0, vlen, int(fps)):
-            for j in range(1, fib_level+1):
-                # sim_score <- match (ith, i-1th, i-2th, ...) frames with text    
-                # sample (ith, i-1th, i-2th, ...) frames ####in total fib(j) frames
-                frame_indices = sample_previous(i, fib(j))
-                frames = video_reader.get_batch(frame_indices)  # (T, H, W, C), torch.uint8
-                frames = frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+            # online matching
+            # int(fps)
+            for i in range(0, vlen):
+                for j in range(1, fib_level+1):
+                    # sim_score <- match (ith, i-1th, i-2th, ...) frames with text    
+                    # sample (ith, i-1th, i-2th, ...) frames ####in total fib(j) frames
+                    frame_indices = sample_previous(i, fib(j))
+                    frames = video_reader.get_batch(frame_indices)  # (T, H, W, C), torch.uint8
+                    frames = frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
 
-                data['video'] = frame_norm( frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+                    data['video'] = frame_norm( frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
 
-                # encode video according to frame
-                with torch.no_grad():
-                    image_features = model.encode_image(data['video'])
-                    vid_embed = image_features / image_features.norm(dim=-1, keepdim=True)
+                    # encode video according to frame
+                    with torch.no_grad():
+                        image_features = model.encode_image(data['video'])
+                        vid_embed = image_features / image_features.norm(dim=-1, keepdim=True)
 
-                ##@ debug
-                #print(f'text dtype: {text_embed.dtype}')
-                #print(f'vid dtype {vid_embed.dtype}')
+                    ##@ debug
+                    #print(f'text dtype: {text_embed.dtype}')
+                    #print(f'vid dtype {vid_embed.dtype}')
 
-                # video: nomarlized tensor (b, t, c, h, w)
-                # text: tokenized tensor (b, module_dim)
-                sims = sim_matrix(text_embed, vid_embed)
-                sim_score = sims.detach().cpu().numpy()[0,0]
+                    # video: nomarlized tensor (b, t, c, h, w)
+                    # text: tokenized tensor (b, module_dim)
+                    sims = sim_matrix(text_embed, vid_embed)
+                    sim_score = sims.detach().cpu().numpy()[0,0]
 
-                ##@ debug
-                #print(frame_indices)
-                #print(sims)
+                    ##@ debug
+                    #print(frame_indices)
+                    #print(sims)
 
-                # recored sims score for individual frames
-                if j == 1:
-                    frame_sims[i] = sim_score
+                    # recored sims score for individual frames
+                    if j == 1:
+                        frame_sims[i] = sim_score
 
-                if sim_score > c_level:
+                    if sim_score > c_level:
 
-                    if j == fib_level and frame_sims[frame_indices[-1]] > c_level:
-                        ##@ debug
-                        #print('fib_level reached found')
-                        #print(frame_indices)
-                        #print(sims)
-                        #print(data['video'].shape)
-                        return frame_indices, data['video']
+                        if j == fib_level and frame_sims[ frame_indices[0] ] > c_level:
+                            ##@ debug
+                            #print('fib_level reached found')
+                            #print(frame_indices)
+                            #print(sims)
+                            #print(data['video'].shape)
+                            return frame_indices, data['video']
 
-                    ## TODO KEY ERROR ! frame_indices[0]
-                    elif frame_sims[frame_indices[-1]] <= c_level:
-                        ##@ debug
-                        #print('end condition matched')
-                        #print(frame_indices)
-                        #print(frame_indices[1:])
-                        #print(sims)
-                        #print(data['video'].shape)
-                        return frame_indices[1:], data['video'][:, 1:]
+                        ## TODO KEY ERROR ! frame_indices[0]
+                        elif frame_sims[ frame_indices[0] ] <= c_level:
+                            ##@ debug
+                            #print('end condition matched')
+                            #print(frame_indices)
+                            #print(frame_indices[1:])
+                            #print(sims)
+                            #print(data['video'].shape)
+                            return frame_indices[1:], data['video'][:, 1:]
 
-                if sim_score > max_sim_score:
-                    max_sim_score = sim_score
-                    max_frame_indices = frame_indices
-                    max_frames = data['video']
+                    if sim_score > max_sim_score:
+                        max_sim_score = sim_score
+                        max_frame_indices = frame_indices
+                        max_frames = data['video']
 
-        #print('no higher than c_level')
-        #print(max_frame_indices)
-        #print(max_sim_score)
-        return max_frame_indices, max_frames
-        #except Exception as e:
-            #print('Error in perfroming online algorithm')
-            #return None, None
+            #print('no higher than c_level')
+            #print(max_frame_indices)
+            #print(max_sim_score)
+            return max_frame_indices, max_frames
+        except Exception as e:
+            print('Error in loading or perfroming online algorithm')
+            return None, None
 
 def img_collate(imgs):
     """

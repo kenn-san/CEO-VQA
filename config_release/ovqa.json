@@ -5,7 +5,7 @@
         "txt": {
           "ovqa": "data/ovqa_annos/ovqa_train_7k.jsonl"
         },
-        "img": "/temp/generated" 
+        "img": "/temp/generated_4fps" 
       }
     ],
     "val_datasets": [
@@ -14,7 +14,7 @@
         "txt": {
           "ovqa": "data/ovqa_annos/ovqa_val.jsonl"
         },
-        "img": "/temp/generated"
+        "img": "/temp/generated_4fps"
       }
     ],
     "ans2label_path": "data/ovqa_annos/train_ans2label.json",
@@ -41,7 +41,7 @@
     "num_train_epochs": 10,
     "min_valid_steps": 50,
     "num_valid": 50, 
-    "learning_rate": 1e-5, 
+    "learning_rate": 1e-4, 
     "weight_decay": 1e-3, 
     "decay": "linear",
     "optim": "adamw",
@@ -54,7 +54,7 @@
     "classifier": "mlp",
     "cls_hidden_scale": 2,
     "task": "ovqa",
-    "num_workers": 0,
+    "num_workers": 4,
 
 
     "mcq_model_path": "data/MCQ_PT/MCQ_CLIP.pth", 

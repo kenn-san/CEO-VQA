@@ -613,12 +613,17 @@ def start_training(cfg):
             restorer.step()
             pbar.update(1)
 
-            # checkpoint                             ##@ debug
-            if global_step % cfg.valid_steps == 0 or global_step == 88:
+            # checkpoint
+            if global_step % cfg.valid_steps == 0:
+                
+                LOGGER.info(f'Skip online validation currently for out of memory')
+                """
                 LOGGER.info(f'Step {global_step}: start validation')
                 validate(
                     model, val_loader, cfg, global_step)
+                """
                 model_saver.save(step=global_step, model=model)
+                
         if global_step >= cfg.num_train_steps:
             break
 
