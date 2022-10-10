@@ -5,6 +5,6 @@ echo $PYTHONPATH
 
 CONFIG_PATH='config_release/msrvtt_qa.json'
 
-horovodrun -np 8 python src/tasks/run_video_qa.py \
+horovodrun -np 1 python src/tasks/run_video_qa.py \
       --config $CONFIG_PATH \
-      --output_dir /export/home/workspace/experiments/alpro/finetune/msrvtt_qa/$(date '+%Y%m%d%H%M%S')
+      --output_dir output/ovqa_baseline/20221010_test
