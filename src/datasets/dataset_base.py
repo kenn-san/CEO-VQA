@@ -29,7 +29,7 @@ def fib(n):
     else:
         return fib(n-1) + fib(n-2)
 
-def sample_previous(i, fib_num):
+def sample_previous_frame_by_frame(i, fib_num):
     """Return a list reprsenting i-th and its previous in total fib_num frames if avaliable"""
     front = i - (fib_num-1)
     if front < 0:
@@ -37,6 +37,13 @@ def sample_previous(i, fib_num):
     else:
         return list(range(front, i+1))
 
+def sample_previous(i, fib_num, sample_list):
+    """Return a list reprsenting i-th and its previous in total fib_num frames if avaliable"""
+    front = i - (fib_num-1)
+    if front < 0:
+        return [ sample_list[i] for i in range(0, i+1)]
+    else:
+        return [ sample_list[i] for i in range(front, i+1) ]
 
 class AlproBaseDataset(Dataset):
     """
@@ -205,7 +212,6 @@ class AlproBaseDataset(Dataset):
         return raw_sample_frms
 
     ##@ add online algorithm to it
-    # TOTEST
     def online_fib_matching_frames_decord(self, video_path, text, ret_model, c_level, fib_level):
         """
         Using fibonacci online matching algorithm to sequentially match most relevent
@@ -271,11 +277,14 @@ class AlproBaseDataset(Dataset):
 
             # online matching
             # int(fps)
-            for i in range(0, vlen):
+
+            sample_list = range(0, vlen, int(fps/4))
+
+            for i in range(0, len(sample_list)):
                 for j in range(1, fib_level+1):
                     # sim_score <- match (ith, i-1th, i-2th, ...) frames with text    
                     # sample (ith, i-1th, i-2th, ...) frames ####in total fib(j) frames
-                    frame_indices = sample_previous(i, fib(j))
+                    frame_indices = sample_previous(i, fib(j), sample_list)
                     frames = video_reader.get_batch(frame_indices)  # (T, H, W, C), torch.uint8
                     frames = frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
 
@@ -301,7 +310,13 @@ class AlproBaseDataset(Dataset):
 
                     # recored sims score for individual frames
                     if j == 1:
-                        frame_sims[i] = sim_score
+                        frame_sims[sample_list[i]] = sim_score
+
+                    # record max ones
+                    if sim_score > max_sim_score:
+                        max_sim_score = sim_score
+                        max_frame_indices = frame_indices
+                        max_frames = data['video']
 
                     if sim_score > c_level:
 
@@ -322,18 +337,17 @@ class AlproBaseDataset(Dataset):
                             #print(sims)
                             #print(data['video'].shape)
                             return frame_indices[1:], data['video'][:, 1:]
-
-                    if sim_score > max_sim_score:
-                        max_sim_score = sim_score
-                        max_frame_indices = frame_indices
-                        max_frames = data['video']
+                    
+                    else:
+                        break
 
             #print('no higher than c_level')
             #print(max_frame_indices)
             #print(max_sim_score)
             return max_frame_indices, max_frames
         except Exception as e:
-            print('Error in loading or perfroming online algorithm')
+            with open('online_error.log', "a") as f:
+                f.write(f'error processing video {video_path} \n')
             return None, None
 
 def img_collate(imgs):

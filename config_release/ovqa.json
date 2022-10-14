@@ -5,16 +5,16 @@
         "txt": {
           "ovqa": "data/ovqa_annos/ovqa_train_7k.jsonl"
         },
-        "img": "/temp/generated_4fps" 
+        "img": "/temp/generated/" 
       }
     ],
     "val_datasets": [
       {
         "name": "ovqa_qa",
         "txt": {
-          "ovqa": "data/ovqa_annos/ovqa_val.jsonl"
+          "ovqa": "data/ovqa_annos/ovqa_test.jsonl"
         },
-        "img": "/temp/generated_4fps"
+        "img": "/temp/generated/"
       }
     ],
     "ans2label_path": "data/ovqa_annos/train_ans2label.json",
@@ -40,7 +40,7 @@
 
     "num_train_epochs": 10,
     "min_valid_steps": 50,
-    "num_valid": 50, 
+    "num_valid": 5, 
     "learning_rate": 1e-4, 
     "weight_decay": 1e-3, 
     "decay": "linear",
