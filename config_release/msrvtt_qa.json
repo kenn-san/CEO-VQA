@@ -3,7 +3,7 @@
     {
       "name": "msrvtt_qa",
       "txt": {
-        "msrvtt_qa": "data/ovqa_annos/founded_train.jsonl"
+        "msrvtt_qa": "data/ovqa_annos/ovqa_train_7k.jsonl"
       },
       "img": "/temp/generated"
     }
@@ -12,12 +12,12 @@
     {
       "name": "msrvtt_qa",
       "txt": {
-        "msrvtt_qa": "data/ovqa_annos/founded_test.jsonl"
+        "msrvtt_qa": "data/ovqa_annos/ovqa_test.jsonl"
       },
       "img": "/temp/generated"
     }
   ],
-  "ans2label_path": "data/ovqa_annos/founded_train_ans2label.json",
+  "ans2label_path": "data/ovqa_annos/train_ans2label.json",
   "max_txt_len": 40,
   "crop_img_size": 224,
   "resize_size": 256,
@@ -29,11 +29,11 @@
   "tokenizer_dir": "ext/bert-base-uncased/",
   "visual_model_cfg": "config_release/timesformer_divst_8x32_224_k600_gc.json",
   "e2e_weights_path": "output/pretrain/alpro_pretrained_ckpt.pt",
-  "num_frm": 8,
+  "num_frm": 4,
   "train_batch_size": 6,
   "val_batch_size": 6,
   "gradient_accumulation_steps": 8,
-  "num_train_epochs": 10,
+  "num_train_epochs": 15,
   "min_valid_steps": 50,
   "num_valid": 5,
   "learning_rate": 5e-5,
