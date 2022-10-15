@@ -335,7 +335,7 @@ class SharedConfigs(object):
             num_answers = 0
 
         if args.task in ["msrvtt_qa", "msvd_qa"]:
-            args.num_labels = max(num_answers, 1500)
+            args.num_labels = num_answers #max(num_answers, 1500)
             args.loss_type = "ce"
         else:
             raise NotImplementedError
