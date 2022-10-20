@@ -85,8 +85,16 @@ class AlproVideoQADataset(AlproBaseDataset):
                 # ONLINE
                 # TOTEST
                 #print(video_path)
-
+                
+                """
                 frame_indices, vid_frm_array = self.online_fib_matching_frames_decord(video_path = video_path, 
+                                                                       text = examples[0]["question"], # 1 example per video
+                                                                       ret_model = self.ret_model, 
+                                                                       c_level = self.c_level, 
+                                                                       fib_level = self.f_level)
+                """
+                
+                frame_indices, vid_frm_array = self.online_one_by_one_matching_frames_decord(video_path = video_path, 
                                                                        text = examples[0]["question"], # 1 example per video
                                                                        ret_model = self.ret_model, 
                                                                        c_level = self.c_level, 

@@ -30,18 +30,16 @@
     "tokenizer_dir": "ext/bert-base-uncased/",
     "visual_model_cfg": "config_release/timesformer_divst_8x32_224_k600_gc.json",
     "e2e_weights_path": "output/pretrain/alpro_pretrained_ckpt.pt",
-    
-    "TOTEST BELOW": 1,
 
     "num_frm": 4,
-    "train_batch_size": 3, 
-    "val_batch_size": 3, 
+    "train_batch_size": 6, 
+    "val_batch_size": 6, 
     "gradient_accumulation_steps": 8, 
 
-    "num_train_epochs": 10,
+    "num_train_epochs": 15,
     "min_valid_steps": 50,
     "num_valid": 5, 
-    "learning_rate": 1e-4, 
+    "learning_rate": 5e-5, 
     "weight_decay": 1e-3, 
     "decay": "linear",
     "optim": "adamw",
@@ -59,6 +57,6 @@
 
     "mcq_model_path": "data/MCQ_PT/MCQ_CLIP.pth", 
     "c_level": 0.400, 
-    "f_level": 4
+    "f_level": 6
   }
   

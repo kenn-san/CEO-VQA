@@ -22,6 +22,22 @@ frame_norm = transforms.Compose([
         transforms.Normalize([0.48145466, 0.4578275, 0.40821073], [0.26862954, 0.26130258, 0.27577711])
 ])
 
+##@ Create a custom logger
+import logging
+logger = logging.getLogger(__name__)
+
+# Create handlers
+f_handler = logging.FileHandler('/content/drive/MyDrive/Colab projects/VideoQA research projects/OnlineVideoQA/OVQA-ALPRO/output/feeded_frames.log')
+f_handler.setLevel(logging.INFO)
+
+# Create formatters and add it to handlers
+f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+f_handler.setFormatter(f_format)
+
+# Add handlers to the logger
+logger.addHandler(f_handler)
+logger.info('feeded frames:')
+
 def fib(n):
     """Return the n-th Fibonacci number."""
     if n == 1 or n == 2:
@@ -275,8 +291,8 @@ class AlproBaseDataset(Dataset):
             # recording individual frame sim scors
             frame_sims = dict()
 
-            # online matching
-            # int(fps)
+            # ！！！！ c_backward
+            c_backward = c_level - 0.5
 
             sample_list = range(0, vlen, int(fps/4))
 
@@ -345,6 +361,133 @@ class AlproBaseDataset(Dataset):
             #print(max_frame_indices)
             #print(max_sim_score)
             return max_frame_indices, max_frames
+        except Exception as e:
+            with open('online_error.log', "a") as f:
+                f.write(f'error processing video {video_path} \n')
+            return None, None
+
+    def online_one_by_one_matching_frames_decord(self, video_path, text, ret_model, c_level, fib_level):
+        """
+        Imporved frame based online matching algorithm
+        """
+        try:
+            model = ret_model
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            # reading video frames based on fib
+            video_reader = decord.VideoReader(video_path, num_threads=1)
+
+            vlen = len(video_reader)
+            fps = video_reader.get_avg_fps()
+
+            # used for return if c_level filter all frames
+            max_sim_score = 0
+            max_frames = None
+            max_frame_index = None
+            max_frame_indices = None
+
+            data = dict()
+            data['video'] = None
+            data['text'] = [text]
+
+            # encode text for once
+            with torch.no_grad():
+                if tokenize is not None:
+                    data['text'] = tokenize(data['text']).to(device)
+                text_features = model.encode_text( data['text'] )
+                text_embed = text_features / text_features.norm(dim=-1, keepdim=True)
+
+            # recording individual frame sim scors
+            frame_sims = dict()
+
+            # c_backward for backward skim
+            c_backward = c_level - 0.05
+
+            # skim 4 frames per second
+            sample_list = range(0, vlen, int(fps/4))
+
+            for i in range(0, len(sample_list)):
+                # sim_score <- match (ith, i-1th, i-2th, ...) frames with text    
+                # sample (ith, i-1th, i-2th, ...) frames ####in total fib(j) frames
+                frame_indices = sample_previous(i, 1, sample_list)
+                frames = video_reader.get_batch(frame_indices)  # (T, H, W, C), torch.uint8
+                frames = frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+                data['video'] = frame_norm( frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+
+                # encode video according to frame
+                with torch.no_grad():
+                    image_features = model.encode_image(data['video'])
+                    vid_embed = image_features / image_features.norm(dim=-1, keepdim=True)
+                    # video: nomarlized tensor (b, t, c, h, w)
+                    # text: tokenized tensor (b, module_dim)
+                    sims = sim_matrix(text_embed, vid_embed)
+                    sim_score = sims.detach().cpu().numpy()[0,0]
+                    
+                # recorded sim score for individual frame
+                frame_sims[sample_list[i]] = sim_score
+
+                if sim_score > max_sim_score:
+                    max_sim_score = sim_score
+                    max_frame_index = i
+                    c_backward = min(c_level - 0.10, max_sim_score - 0.10)
+                    
+                
+                if sim_score > c_level:
+                    # BACKWARD SKIM (found higher than c_level and ready to return)
+                    for j in range(4, fib_level+1):
+                        back_frame_indices = sample_previous(i, fib(j), sample_list)
+                    
+                        if j == fib_level and frame_sims[ back_frame_indices[0] ] > c_backward:
+                            return_frames = video_reader.get_batch(back_frame_indices)  # (T, H, W, C), torch.uint8
+                            return_frames = return_frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+                            return_frames = frame_norm( return_frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+    
+                            ##@ Used for Error checking, comment later
+                            logger.info(f'feeded_frames_num: {len(back_frame_indices)}, video: {video_path}, start: {back_frame_indices[0]/fps}, end: {back_frame_indices[-1]/fps}')
+                            #print(frame_sims[ back_frame_indices[-1] ])
+                            #print(frame_sims[ sample_list[max_frame_index] ])
+                            #print(frame_sims[ back_frame_indices[0] ])
+    
+                            return back_frame_indices, return_frames
+                        elif frame_sims[ back_frame_indices[0] ] <= c_backward:
+                            return_frames = video_reader.get_batch(back_frame_indices)  # (T, H, W, C), torch.uint8
+                            return_frames = return_frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+                            return_frames = frame_norm( return_frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+    
+                            ##@ Used for Error checking, comment later
+                            logger.info(f'feeded_frames_num: {len(back_frame_indices[1:])}, video: {video_path}, start: {back_frame_indices[1:][0]/fps}, end: {back_frame_indices[1:][-1]/fps}')
+                            #print(frame_sims[ back_frame_indices[-1] ])
+                            #print(frame_sims[ sample_list[max_frame_index] ])
+                            #print(frame_sims[ back_frame_indices[0] ])
+    
+                            
+                            return back_frame_indices[1:], return_frames[:, 1:]
+                            
+                else:
+                    continue 
+
+            # BACKWARD SKIM (Not found higher than c_level and return max and previous)
+            for j in range(4, fib_level+1):
+                back_frame_indices = sample_previous(max_frame_index, fib(j), sample_list)
+                    
+                if j == fib_level and frame_sims[ back_frame_indices[0] ] > c_backward:
+                    return_frames = video_reader.get_batch(back_frame_indices)  # (T, H, W, C), torch.uint8
+                    return_frames = return_frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+                    return_frames = frame_norm( return_frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+
+                    ##@ Used for Error checking, comment later
+                    logger.info(f'Max used; feeded_frames_num: {len(back_frame_indices)}, video: {video_path}, start: {back_frame_indices[0]/fps}, end: {back_frame_indices[-1]/fps}')
+
+                    return back_frame_indices, return_frames
+                elif frame_sims[ back_frame_indices[0] ] <= c_backward:
+                    return_frames = video_reader.get_batch(back_frame_indices)  # (T, H, W, C), torch.uint8
+                    return_frames = return_frames.permute(0, 3, 1, 2)  # (T, C, H, W), torch.uint8
+                    return_frames = frame_norm( return_frames.float().div_(255.) ).unsqueeze(0).to(device) #(bz=1, T, C, H, W)
+
+                    ##@ Used for Error checking, comment later
+                    logger.info(f'Max used; feeded_frames_num: {len(back_frame_indices[1:])}, video: {video_path}, start: {back_frame_indices[1:][0]/fps}, end: {back_frame_indices[1:][-1]/fps}')
+                    
+                    return back_frame_indices[1:], return_frames[:, 1:]
+
         except Exception as e:
             with open('online_error.log', "a") as f:
                 f.write(f'error processing video {video_path} \n')
