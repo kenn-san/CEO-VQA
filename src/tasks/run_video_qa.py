@@ -55,12 +55,26 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
     datalist = []
     qid = 0
     for raw_d in raw_datalist:
-        d = dict(
-            question=raw_d["question"],
-            vid_id=raw_d["video_id"],
-            answer=raw_d["answer"],  # int or str
-            question_id=qid  # be careful, it is not unique across splits
-        )
+        if "founded_duration" in raw_d:
+            d = dict(
+                question=raw_d["question"],
+                vid_id=raw_d["video_id"],
+                answer=raw_d["answer"],  # int or str
+                fps=raw_d["fps"],
+                founded_duration=raw_d["founded_duration"],
+                f_b_indices=raw_d["f_b_indices"],
+                question_id=qid  # be careful, it is not unique across splits
+            )
+        else:
+            d = dict(
+                question=raw_d["question"],
+                vid_id=raw_d["video_id"],
+                answer=raw_d["answer"],  # int or str
+                fps=raw_d["fps"],
+                founded_duration=None,
+                f_b_indices=None,
+                question_id=qid  # be careful, it is not unique across splits
+            )
         qid += 1
 
         d["answer_type"] = raw_d["answer_type"]
@@ -87,7 +101,8 @@ def mk_qa_dataloader(task_type, anno_path, lmdb_dir, cfg, tokenizer,
     frm_sampling_strategy = cfg.frm_sampling_strategy
     if not is_train:
         # frm_sampling_strategy = "middle"
-        frm_sampling_strategy = "uniform"
+        # frm_sampling_strategy = "uniform"
+        frm_sampling_strategy = "rand"
     
     if 'msvd' in cfg.task:
         video_fmt = '.avi'

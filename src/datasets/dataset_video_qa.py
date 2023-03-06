@@ -65,7 +65,18 @@ class AlproVideoQADataset(AlproBaseDataset):
                 raise NotImplementedError('Do not support multiple clips for now.')
             else:
                 video_path = os.path.join(self.img_db_dir, vid_id + self.video_fmt) 
-                vid_frm_array = self._load_video_from_path_decord(video_path, height=self.max_img_size, width=self.max_img_size)
+
+                """ using offline extracted annotations"""
+                # only_one_qa_paire
+                if examples[0]["founded_duration"] and examples[0]["f_b_indices"] is not None:
+                    vid_frm_array = self._load_video_from_path_decord(video_path, height=self.max_img_size, width=self.max_img_size,
+                                                                      start_time=examples[0]["founded_duration"][0], 
+                                                                      end_time=examples[0]["founded_duration"][1], 
+                                                                      fps=examples[0]["fps"],
+                                                                      f_b_indices = examples[0]["f_b_indices"])
+                    ##@ print(f'vid_frm_array: {vid_frm_array.shape}')
+                else:
+                    vid_frm_array = None
 
             # Select a random video if the current video was not able to access.
             if vid_frm_array is None:
@@ -164,6 +175,10 @@ class VideoQACollator(object):
 
     def collate_batch(self, batch):
         v_collate = default_collate
+
+        #print(len(batch))
+        #print(batch[0]["vid"].shape)
+
         visual_inputs = v_collate([d["vid"] for d in batch])  # (B, T, 3, H, W)
         # group data
         text_examples = flat_list_of_lists([d["examples"] for d in batch])

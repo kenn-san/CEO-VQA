@@ -3,7 +3,7 @@
     {
       "name": "msrvtt_qa",
       "txt": {
-        "msrvtt_qa": "data/ovqa_annos/ovqa_train_7k.jsonl"
+        "msrvtt_qa": "data/ovqa_annos/summary_with_fps_annos_0.4_7_train.jsonl"
       },
       "img": "/temp/generated"
     }
@@ -12,7 +12,7 @@
     {
       "name": "msrvtt_qa",
       "txt": {
-        "msrvtt_qa": "data/ovqa_annos/ovqa_test.jsonl"
+        "msrvtt_qa": "data/ovqa_annos/summary_with_fps_annos_0.4_7_test.jsonl"
       },
       "img": "/temp/generated"
     }
