@@ -29,6 +29,6 @@ You can download Answer Target in Background Stream (ATBS) Dataset from this goo
 ```
 
 ## Credit
-The implementation of this work is based on the source code of [ALPRO](https://github.com/isabella232/ALPRO) and resources from [MCQ]https://github.com/TencentARC/MCQ
+The implementation of this work is based on the source code of [ALPRO](https://github.com/isabella232/ALPRO) and resources from [MCQ](https://github.com/TencentARC/MCQ)
 
 
