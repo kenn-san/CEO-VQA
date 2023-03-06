@@ -2,9 +2,7 @@ apt update
 apt install lsof
 
 # horovod
-#HOROVOD_GPU_ALLREDUCE=NCCL HOROVOD_NCCL_LINK=SHARED HOROVOD_WITH_PYTORCH=1 \
-#    pip install --no-cache-dir horovod==0.19.4 &&\
-#    ldconfig
+HOROVOD_GPU_ALLREDUCE=NCCL  HOROVOD_WITH_PYTORCH=1 pip install --no-cache-dir horovod[pytorch] && ldconfig
 
 # use the faster pillow-simd instead of the original pillow
 # https://github.com/uploadcare/pillow-simd
@@ -15,8 +13,9 @@ spacy download en
 
 pip install -r requirements.txt
 
-#git clone https://github.com/NVIDIA/apex.git &&\
-#    cd apex &&\
-#    pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" . &&\
-#    rm -rf ../apex
+# NVIDIA apex
+git clone https://github.com/NVIDIA/apex.git &&\
+cd apex &&\
+    python setup.py install &&\
+    rm -rf ../apex
 

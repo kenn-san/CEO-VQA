@@ -6,7 +6,7 @@ lmdb==0.97
 msgpack-numpy
 msgpack
 toolz
-transformers==4.11.3
+transformers==4.10.2
 tensorboard
 tqdm
 easydict
@@ -17,4 +17,11 @@ av==8.0.2
 ujson
 einops
 decord
-timm
+psutil
+humanize
+scipy
+timm==0.4.5
+dominate
+sacred
+neptune-contrib
+ftfy
