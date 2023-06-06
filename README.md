@@ -1,4 +1,4 @@
-# Confidence-based Event-centric Online Video Question Answering (CEQ-VQA) on a Newly Constructed ATBS Dataset. [[Paper (Under Construction)](#TODO_arxiv)] (ICASSP 2023)
+# Confidence-based Event-centric Online Video Question Answering (CEQ-VQA) on a Newly Constructed ATBS Dataset. [[Paper](https://arxiv.org/abs/2303.03105)] (ICASSP 2023)
 
 [Weikai Kong](https://github.com/WeikaiKong), [Shuhong Ye](https://github.com/kenn-san), [Chenglin Yao](https://www.researchgate.net/profile/Chenglin_Yao2), [Jianfeng Ren](https://research.nottingham.edu.cn/en/persons/jianfeng-ren)
 
