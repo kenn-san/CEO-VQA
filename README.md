@@ -2,7 +2,7 @@
 
 [Weikai Kong](https://github.com/WeikaiKong), [Shuhong Ye](https://github.com/kenn-san), [Chenglin Yao](https://www.researchgate.net/profile/Chenglin_Yao2), [Jianfeng Ren](https://research.nottingham.edu.cn/en/persons/jianfeng-ren)
 
-<img src="pics/Online Video QA illustration.png" width="800">
+<img src="pics/Online Video QA.png" width="800">
 
 ## Requirements
 This work is tested on Ubuntu 20.04 LTS with 1 NVIDIA A100 GPU. The requirement can be installed running:
